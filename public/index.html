@@ -2,9 +2,218 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Title</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure File Storage System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        .file-list {
+            margin-top: 20px;
+        }
+        .file-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+        }
+        .actions button {
+            margin-left: 5px;
+        }
+        .upload-form {
+            margin-bottom: 20px;
+        }
+    </style>
 </head>
 <body>
+<h1>Secure File Storage System</h1>
 
+<div class="container">
+    <div class="upload-form">
+        <h2>Upload File</h2>
+        <form id="uploadForm">
+            <div>
+                <label for="fileInput">Select File:</label>
+                <input type="file" id="fileInput" required>
+            </div>
+            <div style="margin-top: 10px;">
+                <button type="submit">Upload</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="file-list">
+        <h2>Your Files</h2>
+        <div id="fileListContainer">
+            <p>Loading files...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    let API_ENDPOINT;
+
+    // Fetch API endpoint from server
+    fetch('/api-info')
+        .then(response => response.json())
+        .then(data => {
+            API_ENDPOINT = data.apiEndpoint;
+            loadFiles();
+        })
+        .catch(error => {
+            console.error('Error fetching API info:', error);
+            document.getElementById('fileListContainer').innerHTML = '<p>Error loading API configuration</p>';
+        });
+
+    const USER_ID = 'user-' + Math.floor(Math.random() * 1000); // For demo purposes
+
+    document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const fileInput = document.getElementById('fileInput');
+        const file = fileInput.files[0];
+
+        if (!file) {
+            alert('Please select a file to upload');
+            return;
+        }
+
+        try {
+            const reader = new FileReader();
+            reader.onload = async function(event) {
+                const fileContent = event.target.result.split(',')[1]; // Get base64 content
+
+                const response = await fetch(API_ENDPOINT, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        fileName: file.name,
+                        fileContent: fileContent,
+                        fileType: file.type,
+                        userId: USER_ID
+                    })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    alert('File uploaded successfully!');
+                    fileInput.value = '';
+                    loadFiles();
+                } else {
+                    alert(`Error: ${result.message}`);
+                }
+            };
+
+            reader.readAsDataURL(file);
+        } catch (error) {
+            console.error('Error:', error);
+            alert('An error occurred while uploading the file');
+        }
+    });
+
+    async function loadFiles() {
+        try {
+            const response = await fetch(`${API_ENDPOINT}?userId=${USER_ID}`, {
+                method: 'GET'
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                const fileListContainer = document.getElementById('fileListContainer');
+
+                if (result.files && result.files.length > 0) {
+                    let html = '';
+
+                    result.files.forEach(file => {
+                        html += `
+                            <div class="file-item">
+                                <div class="file-info">
+                                    <strong>${file.fileName}</strong>
+                                    <span>(${formatBytes(file.size)})</span>
+                                </div>
+                                <div class="actions">
+                                    <button onclick="downloadFile('${file.fileId}')">Download</button>
+                                    <button onclick="deleteFile('${file.fileId}')">Delete</button>
+                                </div>
+                            </div>
+                        `;
+                    });
+
+                    fileListContainer.innerHTML = html;
+                } else {
+                    fileListContainer.innerHTML = '<p>No files found</p>';
+                }
+            } else {
+                fileListContainer.innerHTML = `<p>Error: ${result.message}</p>`;
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            document.getElementById('fileListContainer').innerHTML = '<p>An error occurred while loading files</p>';
+        }
+    }
+
+    async function downloadFile(fileId) {
+        try {
+            const response = await fetch(`${API_ENDPOINT}/${fileId}`, {
+                method: 'GET'
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.downloadUrl) {
+                window.open(result.downloadUrl, '_blank');
+            } else {
+                alert(`Error: ${result.message}`);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('An error occurred while downloading the file');
+        }
+    }
+
+    async function deleteFile(fileId) {
+        if (confirm('Are you sure you want to delete this file?')) {
+            try {
+                const response = await fetch(`${API_ENDPOINT}/${fileId}`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    alert('File deleted successfully!');
+                    loadFiles();
+                } else {
+                    alert(`Error: ${result.message}`);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred while deleting the file');
+            }
+        }
+    }
+
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 Bytes';
+
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+</script>
 </body>
 </html>
